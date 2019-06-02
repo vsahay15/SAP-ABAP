@@ -1,0 +1,744 @@
+*&---------------------------------------------------------------------*
+*& Report  ZPHD_SCREEN
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+REPORT zphd_screen.
+
+TYPE-POOLS: slis.
+
+TABLES: zlogin, zphdstudent.
+
+TYPES: BEGIN OF ty_student.
+        INCLUDE STRUCTURE zphdstudent.
+TYPES: icon TYPE char4,
+       END OF ty_student.
+
+
+
+DATA: zlog TYPE zlogin-login,
+      zpass TYPE zlogin-password,
+      submit TYPE c,reset TYPE c,
+      exit TYPE c,
+      ok_code LIKE sy-ucomm,
+      wa_zlogin TYPE zlogin,
+      gv_year   TYPE zsession,
+      gv_dyear TYPE zsession.
+*      wa_zphdstudent TYPE ty_student,
+*      it_zphdstudent type table of ty_student.
+
+DATA: lr_container TYPE REF TO cl_gui_custom_container,
+      lr_alv       TYPE REF TO cl_gui_alv_grid,
+      lt_fcat      TYPE lvc_t_fcat,
+      ls_fcat      LIKE LINE OF lt_fcat,
+      ls_layo      TYPE lvc_s_layo,
+      lt_st_marks  TYPE TABLE OF ty_student,
+      ls_st_marks  LIKE LINE OF lt_st_marks,
+      email_to     TYPE string,
+
+      lr_container2 TYPE REF TO cl_gui_custom_container,
+      lr_alv2        TYPE REF TO cl_gui_alv_grid.
+*      lt_fcat       TYPE lvc_t_fcat,
+*      ls_fcat       LIKE LINE OF lt_fcat,
+*      ls_layo       TYPE lvc_s_layo,
+*      lt_st_marks   TYPE TABLE OF ty_student,
+*      ls_st_marks   LIKE LINE OF lt_st_marks.
+
+DATA: p_attach TYPE rlgrap-filename .
+DATA cc_email_con_editor.
+DATA text_editor TYPE REF TO cl_gui_textedit.
+DATA editor_container TYPE REF TO cl_gui_custom_container.
+DATA gs_text TYPE string .
+DATA line_length TYPE i VALUE 600.
+
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0001  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0001 INPUT.
+
+  DATA: lt_values TYPE vrm_values,
+        ls_values LIKE LINE OF lt_values,
+        it_phd TYPE TABLE OF zphdstudent,
+        wa_phd LIKE LINE OF it_phd.
+
+  CASE sy-ucomm.
+    WHEN 'F_EXIT'.
+      LEAVE PROGRAM.
+    WHEN 'F_RESET'.
+      CLEAR zlogin.
+    WHEN 'F_SUBMIT'.
+      IF zlogin-login IS INITIAL OR zlogin-password IS INITIAL.
+
+        MESSAGE 'fill login and password' TYPE 'S' DISPLAY LIKE 'E'.
+        RETURN.
+      ENDIF.
+
+      SELECT SINGLE * FROM zlogin INTO wa_zlogin WHERE login = zlogin-login AND password = zlogin-password.
+      IF sy-subrc = 0.
+        MESSAGE 'login successfull' TYPE 'S'.
+        IF wa_zlogin-username = 'STUDENT'.
+
+          SELECT * FROM zphdstudent INTO TABLE it_phd WHERE loginid = zlogin-login.
+          LOOP AT it_phd INTO wa_phd.
+            ls_values-key = wa_phd-yearsession.
+            ls_values-text = wa_phd-yearsession.
+            COLLECT ls_values INTO lt_values.
+          ENDLOOP.
+
+          CALL FUNCTION 'VRM_SET_VALUES'
+            EXPORTING
+              id              = 'GV_YEAR'
+              values          = lt_values
+            EXCEPTIONS
+              id_illegal_name = 1
+              OTHERS          = 2.
+          IF sy-subrc <> 0.
+          ENDIF.
+
+          CALL SCREEN 0002.
+        ELSE.
+          CALL SCREEN 0003.
+        ENDIF.
+
+
+      ELSE.
+        MESSAGE 'invalid details' TYPE 'S' DISPLAY LIKE 'E'.
+      ENDIF.
+
+
+
+
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      LEAVE PROGRAM.
+  ENDCASE.
+
+ENDMODULE.                 " USER_COMMAND_0001  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0001  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0001 OUTPUT.
+  SET PF-STATUS 'PF_STATUS'.
+  SET TITLEBAR 'TITLE'.
+
+ENDMODULE.                 " STATUS_0001  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0002  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0002 OUTPUT.
+
+  SET PF-STATUS 'PF_STATUS'.
+  SET TITLEBAR 'TITLE'.
+
+
+ENDMODULE.                 " STATUS_0002  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0002  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0002 INPUT.
+  CASE sy-ucomm.
+    WHEN 'F_EXIT'.
+      CALL SCREEN 0001.
+
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      LEAVE PROGRAM.
+    WHEN 'F_YEAR'.
+
+      CLEAR: zphdstudent.
+      SELECT SINGLE * FROM zphdstudent INTO zphdstudent
+        WHERE loginid = zlogin-login
+        AND yearsession = gv_year.
+
+
+
+
+  ENDCASE.
+ENDMODULE.                 " USER_COMMAND_0002  INPUT
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0003  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0003 OUTPUT.
+  SET PF-STATUS 'STATUS_0003'.
+  SET TITLEBAR 'TITLE_0003'.
+
+  IF wa_zlogin-username <> 'HEAD(CIR)'.
+    LOOP AT SCREEN.
+      IF screen-group1 = 'DIS'.
+*        screen-active = 0.
+        screen-invisible = 1.
+        MODIFY SCREEN.
+      ENDIF.
+    ENDLOOP.
+  ENDIF.
+
+
+  IF wa_zlogin-username <> 'STUDENT'.
+    CLEAR: lt_values.
+
+    SELECT * FROM zphdstudent INTO TABLE it_phd ."where loginid = zlogin-login.
+    LOOP AT it_phd INTO wa_phd.
+      ls_values-key = wa_phd-yearsession.
+      ls_values-text = wa_phd-yearsession.
+      COLLECT  ls_values INTO lt_values.
+    ENDLOOP.
+
+    CALL FUNCTION 'VRM_SET_VALUES'
+      EXPORTING
+        id              = 'GV_DYEAR'
+        values          = lt_values
+      EXCEPTIONS
+        id_illegal_name = 1
+        OTHERS          = 2.
+
+    IF sy-subrc <> 0.
+    ENDIF.
+*                 else.
+*                call SCREEN 0003.
+
+  ENDIF.
+
+ENDMODULE.                    "status_0003 OUTPUT
+
+" STATUS_0003  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0003  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0003 INPUT.
+
+  CASE sy-ucomm.
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      LEAVE TO SCREEN 0.
+
+    WHEN OTHERS.
+  ENDCASE.
+
+
+  CASE sy-ucomm.
+    WHEN 'FC_FAIL'.
+      CALL SCREEN 0004.
+
+    WHEN 'FC_EXIT'.
+      LEAVE PROGRAM.
+
+
+
+
+
+
+
+    WHEN 'F_DYEAR'.
+
+*         CLEAR: zphdstudent.
+*         select single * from zphdstudent into zphdstudent
+*           WHERE yearsession = gv_dyear.
+
+      CLEAR: lt_st_marks.
+      SELECT * FROM zphdstudent INTO CORRESPONDING FIELDS OF TABLE lt_st_marks
+        WHERE yearsession = gv_dyear.
+
+      LOOP AT lt_st_marks INTO ls_st_marks.
+        IF ls_st_marks-status = 'PASS'.
+          ls_st_marks-icon = '@08@'.
+        ELSE.
+          ls_st_marks-icon = '@0A@'.
+        ENDIF.
+
+        MODIFY lt_st_marks FROM ls_st_marks.
+      ENDLOOP.
+
+
+      IF lr_container IS INITIAL.
+        CREATE OBJECT lr_container
+          EXPORTING
+*        parent                      =
+            container_name              = 'CONTAINER'
+*        style                       =
+*        lifetime                    = lifetime_default
+*        repid                       =
+*        dynnr                       =
+*        no_autodef_progid_dynnr     =
+          EXCEPTIONS
+            cntl_error                  = 1
+            cntl_system_error           = 2
+            create_error                = 3
+            lifetime_error              = 4
+            lifetime_dynpro_dynpro_link = 5
+            OTHERS                      = 6
+            .
+        CREATE OBJECT lr_alv
+          EXPORTING
+*        i_shellstyle      = 0
+*        i_lifetime        =
+            i_parent          = lr_container
+*        i_appl_events     = space
+*        i_parentdbg       =
+*        i_applogparent    =
+*        i_graphicsparent  =
+*        i_name            =
+*        i_fcat_complete   = SPACE
+          EXCEPTIONS
+            error_cntl_create = 1
+            error_cntl_init   = 2
+            error_cntl_link   = 3
+            error_dp_create   = 4
+            OTHERS            = 5
+            .
+
+*/.. Prepare Fieldcatalog
+        PERFORM fill_fieldcat.
+
+*/.. Show ALV
+        CALL METHOD lr_alv->set_table_for_first_display
+          EXPORTING
+*           i_buffer_active               =
+*           i_bypassing_buffer            =
+*           i_consistency_check           =
+*           i_structure_name              =
+*           is_variant                    =
+*           i_save                        =
+*           i_default                     = 'X'
+            is_layout                     = ls_layo
+*           is_print                      =
+*           it_special_groups             =
+*           it_toolbar_excluding          =
+*           it_hyperlink                  =
+*           it_alv_graphics               =
+*           it_except_qinfo               =
+*           ir_salv_adapter               =
+          CHANGING
+            it_outtab                     = lt_st_marks
+            it_fieldcatalog               = lt_fcat
+*           it_sort                       =
+*           it_filter                     =
+          EXCEPTIONS
+            invalid_parameter_combination = 1
+            program_error                 = 2
+            too_many_lines                = 3
+            OTHERS                        = 4.
+        IF sy-subrc <> 0.
+*   Implement suitable error handling here
+        ENDIF.
+
+      ELSE.
+        lr_alv->refresh_table_display( ).
+
+      ENDIF.
+
+  ENDCASE.
+
+ENDMODULE.                 " USER_COMMAND_0003  INPUT
+*&---------------------------------------------------------------------*
+*&      Form  FILL_FIELDCAT
+*&---------------------------------------------------------------------*
+FORM fill_fieldcat .
+
+  CLEAR: lt_fcat, ls_fcat.
+
+  ls_fcat-fieldname = 'ICON'.
+  ls_fcat-coltext   = 'Status'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'LOGINID'.
+  ls_fcat-coltext   = 'Login ID'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'YEARSESSION'.
+  ls_fcat-coltext   = 'year'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'NAME' .
+  ls_fcat-coltext   = 'Student Name'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'EMAIL_ID'.
+  ls_fcat-coltext   = 'Email id'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'FATHER_NAME'.
+  ls_fcat-coltext   = 'Father Name'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'BATCH'.
+  ls_fcat-coltext   = 'Batch'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'DOB'.
+  ls_fcat-coltext   = 'Date of Birth'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'PAPER1'.
+  ls_fcat-coltext   = 'Paper 1'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'PAPER2'.
+  ls_fcat-coltext   = 'Paper 2'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'PAPER3'.
+  ls_fcat-coltext   = 'Paper 3'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'PAPER4'.
+  ls_fcat-coltext   = 'Paper 4'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'PAPER5'.
+  ls_fcat-coltext   = 'Paper 5'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'TOTAL_MARKS'.
+  ls_fcat-coltext   = 'Total Mark'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'AGGREGATE'.
+  ls_fcat-coltext   = 'Obtained Marks'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'PERCENTAGE'.
+  ls_fcat-coltext   = 'Marks (%)'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'BACK_PAPER'.
+  ls_fcat-coltext = 'back paper'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'STATUS'.
+  ls_fcat-coltext = 'status'.
+  APPEND ls_fcat TO lt_fcat.
+
+  ls_layo-grid_title = 'Student Details'.
+  ls_layo-cwidth_opt = 'X'.
+  ls_layo-sel_mode = 'A'.
+
+
+
+ENDFORM.                    " FILL_FIELDCAT
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0004  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_0004 OUTPUT.
+  SET PF-STATUS 'PF_STATUS'.
+  SET TITLEBAR 'TITLE'.
+
+  CLEAR: lt_st_marks.
+  SELECT * FROM zphdstudent INTO CORRESPONDING FIELDS OF TABLE lt_st_marks WHERE status = 'FAIL' .
+
+  LOOP AT lt_st_marks INTO ls_st_marks.
+    IF ls_st_marks-status = 'PASS'.
+      ls_st_marks-icon = '@08@'.
+    ELSE.
+      ls_st_marks-icon = '@0A@'.
+    ENDIF.
+
+    MODIFY lt_st_marks FROM ls_st_marks.
+  ENDLOOP.
+
+
+  IF lr_container2 IS INITIAL.
+    CREATE OBJECT lr_container2
+      EXPORTING
+*        parent                      =
+        container_name              = 'CONTAINER2'
+*        style                       =
+*        lifetime                    = lifetime_default
+*        repid                       =
+*        dynnr                       =
+*        no_autodef_progid_dynnr     =
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5
+        OTHERS                      = 6
+        .
+    CREATE OBJECT lr_alv2
+      EXPORTING
+*        i_shellstyle      = 0
+*        i_lifetime        =
+        i_parent          = lr_container2
+*        i_appl_events     = space
+*        i_parentdbg       =
+*        i_applogparent    =
+*        i_graphicsparent  =
+*        i_name            =
+*        i_fcat_complete   = SPACE
+      EXCEPTIONS
+        error_cntl_create = 1
+        error_cntl_init   = 2
+        error_cntl_link   = 3
+        error_dp_create   = 4
+        OTHERS            = 5
+        .
+
+*/.. Prepare Fieldcatalog
+    PERFORM fill_fieldcatt.
+
+*/.. Show ALV
+    CALL METHOD lr_alv2->set_table_for_first_display
+      EXPORTING
+*       i_buffer_active               =
+*       i_bypassing_buffer            =
+*       i_consistency_check           =
+*       i_structure_name              =
+*       is_variant                    =
+*       i_save                        =
+*       i_default                     = 'X'
+        is_layout                     = ls_layo
+*       is_print                      =
+*       it_special_groups             =
+*       it_toolbar_excluding          =
+*       it_hyperlink                  =
+*       it_alv_graphics               =
+*       it_except_qinfo               =
+*       ir_salv_adapter               =
+      CHANGING
+        it_outtab                     = lt_st_marks
+        it_fieldcatalog               = lt_fcat
+*       it_sort                       =
+*       it_filter                     =
+      EXCEPTIONS
+        invalid_parameter_combination = 1
+        program_error                 = 2
+        too_many_lines                = 3
+        OTHERS                        = 4.
+    IF sy-subrc <> 0.
+*   Implement suitable error handling here
+    ENDIF.
+
+  ELSE.
+    lr_alv2->refresh_table_display( ).
+
+  ENDIF.
+
+
+
+ENDMODULE.                 " STATUS_0004  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0004  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0004 INPUT.
+  CASE sy-ucomm.
+    WHEN 'BACK' OR 'EXIT' OR 'CANCEL'.
+      LEAVE TO SCREEN 0.
+
+    WHEN OTHERS.
+  ENDCASE.
+
+  CASE sy-ucomm.
+    WHEN 'FC_BMAIL'.
+      "CALL CL_ABAP_BROWSER=>SHOW_URL( url = 'HTTP://WWW.GOOGLE.COM' ).
+      CALL METHOD cl_abap_browser=>show_url
+        EXPORTING
+          url          = 'https://mail.google.com/mail/u/0/#inbox?compose=new'
+*         title        =
+*         size         = CL_ABAP_BROWSER=>MEDIUM
+*         modal        = ABAP_TRUE
+*         printing     = ABAP_FALSE
+*         buttons      = NAVIGATE_OFF
+*         format       = CL_ABAP_BROWSER=>LANDSCAPE
+*         position     = CL_ABAP_BROWSER=>TOPLEFT
+*         container    =
+*         context_menu =  ABAP_FALSE
+        .
+
+    WHEN 'FC_MAIL'.
+      CALL SCREEN 9301.
+
+
+
+    WHEN 'FC_EXIT'.
+      LEAVE PROGRAM.
+
+  ENDCASE.
+
+
+ENDMODULE.                 " USER_COMMAND_0004  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  fill_fieldcatt
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM fill_fieldcatt .
+
+  CLEAR: lt_fcat, ls_fcat.
+
+  ls_fcat-fieldname = 'ICON'.
+  ls_fcat-coltext   = 'Status'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'LOGINID'.
+  ls_fcat-coltext   = 'Login ID'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'NAME' .
+  ls_fcat-coltext   = 'Student Name'.
+  APPEND ls_fcat TO lt_fcat.
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'EMAIL_ID'.
+  ls_fcat-coltext   = 'Email id'.
+  APPEND ls_fcat TO lt_fcat.
+
+
+  CLEAR: ls_fcat.
+  ls_fcat-fieldname = 'STATUS'.
+  ls_fcat-coltext = 'status'.
+  APPEND ls_fcat TO lt_fcat.
+
+  ls_layo-grid_title = 'Student Details'.
+  ls_layo-cwidth_opt = 'X'.
+  ls_layo-sel_mode = 'A'.
+
+
+
+ENDFORM.                    " FILL_FIELDCAT
+
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_9301  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE status_9301 OUTPUT.
+
+  DATA: lt_row TYPE lvc_t_row,
+        ls_row LIKE LINE OF lt_row.
+
+  SET PF-STATUS 'PF_STATUS'.
+  SET TITLEBAR 'TITLE'.
+
+  CALL METHOD lr_alv2->get_selected_rows
+    IMPORTING
+      et_index_rows = lt_row
+*     et_row_no     =
+    .
+  CLEAR: email_to.
+
+  LOOP AT lt_row INTO ls_row.
+    READ TABLE lt_st_marks INTO ls_st_marks INDEX ls_row-index.
+    IF sy-subrc = 0.
+      CONCATENATE email_to ls_st_marks-email_id INTO email_to SEPARATED BY ','.
+    ENDIF.
+  ENDLOOP.
+
+  REPLACE FIRST OCCURRENCE OF ',' IN  email_to WITH space.
+  " copied.
+
+IF text_editor IS INITIAL.
+    CREATE OBJECT editor_container
+      EXPORTING
+        container_name              = 'CC_EMAIL_CON_EDITOR'
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5.
+
+    CALL METHOD EDITOR_CONTAINER->SET_WIDTH
+      EXPORTING
+        WIDTH      = 500
+*  EXCEPTIONS
+*    CNTL_ERROR = 1
+*    others     = 2
+            .
+    IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+
+    CREATE OBJECT text_editor
+      EXPORTING
+        parent                     = editor_container
+        wordwrap_mode              = cl_gui_textedit=>WORDWRAP_AT_FIXED_POSITION
+        wordwrap_position          = line_length
+        wordwrap_to_linebreak_mode = cl_gui_textedit=>false.
+
+
+    CALL METHOD text_editor->set_toolbar_mode
+      EXPORTING
+        toolbar_mode = cl_gui_textedit=>false.
+
+    CALL METHOD text_editor->set_statusbar_mode
+      EXPORTING
+        statusbar_mode = cl_gui_textedit=>false.
+    CALL METHOD TEXT_EDITOR->SET_WIDTH
+      EXPORTING
+        WIDTH      = 500
+*  EXCEPTIONS
+*    CNTL_ERROR = 1
+*    others     = 2
+            .
+    IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+    ENDIF.
+
+    CALL METHOD TEXT_EDITOR->SET_TEXTSTREAM
+      EXPORTING
+        TEXT                   = gs_text
+*            EXCEPTIONS
+*        ERROR_CNTL_CALL_METHOD = 1
+*        NOT_SUPPORTED_BY_GUI   = 2
+*        others                 = 3
+            .
+    IF SY-SUBRC <> 0.
+*     Implement suitable error handling here
+    ENDIF.
+
+
+  ENDIF.
+
+
+
+
+  " over.
+
+ENDMODULE.                 " STATUS_9301  OUTPUT
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_9301  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_9301 INPUT.
+
+ENDMODULE.                 " USER_COMMAND_9301  INPUT
+
+INCLUDE zphd_screen_f4help_attachi01.
